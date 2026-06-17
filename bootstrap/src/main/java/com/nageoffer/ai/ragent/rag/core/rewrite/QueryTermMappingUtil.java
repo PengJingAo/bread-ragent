@@ -22,7 +22,8 @@ public class QueryTermMappingUtil {
     /**
      * 安全归一化替换：
      * - 只替换 sourceTerm
-     * - 如果当前位置本身已经是 targetTerm 起始（例如文本中已经是“平安保司”），则不重复替换
+     * - 如果当前位置本身已经是 targetTerm 起始（例如文本中已经是“平安保司”），则不重复替换，
+     * 否则会变成“平安保司保司”
      */
     public static String applyMapping(String text, String sourceTerm, String targetTerm) {
         if (text == null || text.isEmpty() || sourceTerm == null || sourceTerm.isEmpty()) {
@@ -36,6 +37,7 @@ public class QueryTermMappingUtil {
         int targetLen = targetTerm.length();
 
         while (idx < len) {
+            //表示从指定下标位置idx往后查找子串sourceTerm，有则返回子串第一次出现的起始位置，否则返回-1
             int hit = text.indexOf(sourceTerm, idx);
             if (hit < 0) {
                 // 后面没有命中，整体拷贝
@@ -47,9 +49,11 @@ public class QueryTermMappingUtil {
             sb.append(text, idx, hit);
 
             // 判断当前位置是否已经是 targetTerm 的开头
+            // 而 targetTerm 也可能正好是以 sourceTerm 开头的。避免出现多次替换，导致冗余字符
             boolean alreadyTarget =
                     targetTerm != null
                             && hit + targetLen <= len
+                            //从hit位置开始判断接下来的字符串是不是以targetTerm开头
                             && text.startsWith(targetTerm, hit);
 
             if (alreadyTarget) {

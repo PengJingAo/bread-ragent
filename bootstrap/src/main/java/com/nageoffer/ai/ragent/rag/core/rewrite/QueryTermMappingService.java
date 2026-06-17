@@ -45,6 +45,7 @@ public class QueryTermMappingService {
             return text;
         }
 
+        //todo：这个数据是从哪生成的？
         List<QueryTermMappingDO> mappings = loadMappings();
         if (mappings.isEmpty()) {
             return text;
@@ -76,6 +77,7 @@ public class QueryTermMappingService {
      * 加载映射规则：优先从 Redis 缓存读取，缓存未命中则从数据库加载并回填缓存
      */
     private List<QueryTermMappingDO> loadMappings() {
+        //从缓存中加载映射规则
         List<QueryTermMappingDO> cached = cacheManager.getMappingsFromCache();
         if (CollUtil.isNotEmpty(cached)) {
             return cached;
@@ -87,7 +89,10 @@ public class QueryTermMappingService {
                         .eq(QueryTermMappingDO::getEnabled, 1)
         );
         dbList.sort(Comparator
+                //todo：为什么优先级越高的越靠后？
+                //第一层排序按照优先级Priority，按照倒序排，值越大的越靠前
                 .comparing(QueryTermMappingDO::getPriority, Comparator.nullsLast(Integer::compareTo)).reversed()
+                //第二层排序，当优先级相等时，根据SourceTerm的长度，长度大的排在前面
                 .thenComparing(m -> m.getSourceTerm() == null ? 0 : m.getSourceTerm().length(), Comparator.reverseOrder())
         );
 
