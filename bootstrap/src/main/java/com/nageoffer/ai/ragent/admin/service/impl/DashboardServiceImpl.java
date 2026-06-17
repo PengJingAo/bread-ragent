@@ -705,6 +705,7 @@ public class DashboardServiceImpl implements DashboardService {
         return date.toInstant().atZone(zoneId).toLocalDateTime();
     }
 
+    //返回两个时间窗口（附带相关信息）
     private WindowRange resolveWindowRange(String window, Duration fallback) {
         Duration duration = parseWindow(window, fallback);
         Instant now = Instant.now();
@@ -714,6 +715,7 @@ public class DashboardServiceImpl implements DashboardService {
                 window == null ? formatDuration(fallback) : window, "prev_" + (window == null ? formatDuration(fallback) : window));
     }
 
+    //解析时间持续时长，如果非法就返回默认值fallback
     private Duration parseWindow(String window, Duration fallback) {
         if (window == null || window.isBlank()) {
             return fallback;

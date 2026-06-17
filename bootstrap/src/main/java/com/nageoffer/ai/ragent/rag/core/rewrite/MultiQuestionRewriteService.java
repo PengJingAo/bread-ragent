@@ -81,6 +81,10 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
 
     /**
      * 先用默认改写做归一化，再进行多问句拆分。
+     * todo：弄懂 多问题拆分是为了RAG检索还是分多次调用大模型API来回答问题
+     * 拆分是为了RAG检索，关于大模型API调用有两种实现方案：
+     * 1.多次检索结果合并，一次性调用大模型
+     * 2.每次单独检索后，就调用大模型生成答案，最后整合所有答案
      */
     private RewriteResult rewriteAndSplit(String userQuestion) {
         // 开关关闭：直接做规则归一化 + 规则拆分

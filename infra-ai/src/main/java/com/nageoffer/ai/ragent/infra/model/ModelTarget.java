@@ -27,6 +27,8 @@ import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
  * @param id        模型唯一标识符
  * @param candidate 模型候选配置，包含模型的具体参数和设置
  * @param provider  提供商配置，包含模型提供商的相关信息
+ *
+ * record根据括号中的参数自动生成私有final字段，规范全参构造器，访问器方法
  */
 public record ModelTarget(
         String id,

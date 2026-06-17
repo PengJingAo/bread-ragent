@@ -26,6 +26,11 @@ import org.springframework.util.StringUtils;
 @Service
 public class HeuristicTokenCounterService implements TokenCounterService {
 
+    /**
+     * 计算token数量
+     * @param text 文本内容
+     * @return
+     */
     @Override
     public Integer countTokens(String text) {
         if (!StringUtils.hasText(text)) {
@@ -56,6 +61,11 @@ public class HeuristicTokenCounterService implements TokenCounterService {
         return Math.max(total, 1);
     }
 
+    /**
+     * 判断字符是否为中文、日文、韩文相关字符。
+     * @param ch 目标字符
+     * @return
+     */
     private boolean isCjk(char ch) {
         Character.UnicodeBlock block = Character.UnicodeBlock.of(ch);
         return block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS

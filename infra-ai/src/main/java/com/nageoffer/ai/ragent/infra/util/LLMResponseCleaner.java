@@ -37,6 +37,7 @@ public final class LLMResponseCleaner {
         if (raw == null) {
             return null;
         }
+        //移除字符串首尾的空白字符
         String cleaned = raw.trim();
         cleaned = LEADING_CODE_FENCE.matcher(cleaned).replaceFirst("");
         cleaned = TRAILING_CODE_FENCE.matcher(cleaned).replaceFirst("");

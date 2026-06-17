@@ -475,7 +475,9 @@ public final class FairDistributedRateLimiter {
                                  Runnable onTimeout,
                                  Executor onAcquiredExecutor,
                                  Consumer<Runnable> cancelBinder) {
+        //紧凑型构造器
         public AcquireRequest {
+            //参数校验，如果为null，会抛出空指针异常 NullPointerException
             Objects.requireNonNull(onAcquired);
             Objects.requireNonNull(onTimeout);
             Objects.requireNonNull(onAcquiredExecutor);

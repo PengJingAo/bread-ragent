@@ -70,7 +70,7 @@ public class ChatQueueLimiter {
             }
             return;
         }
-
+        //全局限流
         chatRateLimiter.acquire(AcquireRequest.builder()
                 .maxWaitMillis(TimeUnit.SECONDS.toMillis(rateLimitProperties.getGlobalMaxWaitSeconds()))
                 .onAcquired(onAcquire)

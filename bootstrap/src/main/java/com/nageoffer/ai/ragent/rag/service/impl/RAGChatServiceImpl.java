@@ -52,9 +52,11 @@ public class RAGChatServiceImpl implements RAGChatService {
         String actualConversationId = StrUtil.isBlank(conversationId) ? IdUtil.getSnowflakeNextIdStr() : conversationId;
         String taskId = IdUtil.getSnowflakeNextIdStr();
         StreamCallback callback = callbackFactory.createChatEventHandler(emitter, actualConversationId, taskId);
-
+        //enqueue方法是
         chatQueueLimiter.enqueue(question, actualConversationId, emitter,
+                //run方法是执行业务逻辑并根据enable注解判断是否追踪流式调用的生命周期和耗时（包含数据库每次调用的status写入）
                 () -> traceRunner.run(question, actualConversationId, taskId, callback, traceAware -> {
+                    //lambda表达式写法，指向大模型问答任务（业务逻辑）
                     StreamChatContext ctx = StreamChatContext.builder()
                             .question(question)
                             .conversationId(actualConversationId)
