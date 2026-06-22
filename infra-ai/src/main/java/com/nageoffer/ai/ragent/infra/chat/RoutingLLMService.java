@@ -77,6 +77,7 @@ public class RoutingLLMService implements LLMService {
     @Override
     @RagTraceNode(name = "llm-chat-routing", type = "LLM_ROUTING")
     public String chat(ChatRequest request) {
+        //todo：弄懂这个路由机制
         return executor.executeWithFallback(
                 ModelCapability.CHAT,
                 selector.selectChatCandidates(Boolean.TRUE.equals(request.getThinking())),

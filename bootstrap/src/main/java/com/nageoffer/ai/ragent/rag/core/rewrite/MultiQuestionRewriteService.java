@@ -69,7 +69,9 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
     @RagTraceNode(name = "query-rewrite-and-split", type = "REWRITE")
     public RewriteResult rewriteWithSplit(String userQuestion, List<ChatMessage> history) {
         if (!ragConfigProperties.getQueryRewriteEnabled()) {
+            //做术语归一化
             String normalized = queryTermMappingService.normalize(userQuestion);
+            //普通的按分隔符进行拆分问题
             List<String> subs = ruleBasedSplit(normalized);
             return new RewriteResult(normalized, subs);
         }
@@ -108,7 +110,9 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
         ChatRequest req = buildRewriteRequest(systemPrompt, normalizedQuestion, history);
 
         try {
+            //应该chat接口包含对模型返回内容的解析吧
             String raw = llmService.chat(req);
+            //todo：弄懂调用大模型API请求响应的内容格式
             RewriteResult parsed = parseRewriteAndSplit(raw);
 
             if (parsed != null) {
@@ -161,6 +165,7 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
     }
 
 
+    //todo：重写的问题和子问题之间的关系是什么？
     private RewriteResult parseRewriteAndSplit(String raw) {
         try {
             // 移除可能存在的 Markdown 代码块标记
@@ -171,11 +176,13 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
                 return null;
             }
             JsonObject obj = root.getAsJsonObject();
+            //todo：字段名称要求严格匹配，这是如何确定的呢？如何能够保证大模型的返回值就是使用的这些字段呢？
             String rewrite = obj.has("rewrite") ? obj.get("rewrite").getAsString().trim() : "";
             List<String> subs = new ArrayList<>();
             if (obj.has("sub_questions") && obj.get("sub_questions").isJsonArray()) {
                 JsonArray arr = obj.getAsJsonArray("sub_questions");
                 for (JsonElement el : arr) {
+                    //判断是否是基础字面量类型数据（包含字符串，数字，布尔三类） && 判断是否是字符串类型的数据
                     if (el.isJsonPrimitive() && el.getAsJsonPrimitive().isString()) {
                         String s = el.getAsString().trim();
                         if (StrUtil.isNotBlank(s)) {
@@ -200,7 +207,9 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
     private List<String> ruleBasedSplit(String question) {
         // 兜底：按常见分隔符拆分
         List<String> parts = Arrays.stream(question.split("[?？。；;\\n]+"))
+                //去除首位空白
                 .map(String::trim)
+                //过滤空字符串
                 .filter(StrUtil::isNotBlank)
                 .collect(Collectors.toList());
 

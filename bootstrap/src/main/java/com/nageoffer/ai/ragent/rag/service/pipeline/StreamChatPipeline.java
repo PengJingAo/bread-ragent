@@ -76,6 +76,7 @@ public class StreamChatPipeline {
      * 执行流式对话管道
      */
     public void execute(StreamChatContext ctx) {
+        //todo：但是实际上顺序是先意图识别再考虑要不要问题重写（涉及到RAG检索才需要）
         loadMemory(ctx);
         rewriteQuery(ctx);
         resolveIntents(ctx);
@@ -106,6 +107,7 @@ public class StreamChatPipeline {
         ctx.setHistory(history);
     }
 
+    //先术语归一化，再调用大模型问题重写和拆分
     private void rewriteQuery(StreamChatContext ctx) {
         RewriteResult rewriteResult = queryRewriteService.rewriteWithSplit(ctx.getQuestion(), ctx.getHistory());
         ctx.setRewriteResult(rewriteResult);

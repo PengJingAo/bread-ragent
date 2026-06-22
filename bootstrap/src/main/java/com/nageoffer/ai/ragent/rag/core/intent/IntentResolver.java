@@ -88,6 +88,7 @@ public class IntentResolver {
                 && nodeScores.get(0).getNode().getKind() == SYSTEM;
     }
 
+    //单个问题进行意图识别
     private List<NodeScore> classifyIntents(String question) {
         List<NodeScore> scores = intentClassifier.classifyTargets(question);
         return scores.stream()
