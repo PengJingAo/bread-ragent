@@ -88,6 +88,7 @@ public class RoutingLLMService implements LLMService {
 
     @Override
     public String chat(ChatRequest request, String modelId) {
+        //modelId合法性校验，不能为null，不能是空字符
         if (!StringUtils.hasText(modelId)) {
             return chat(request);
         }

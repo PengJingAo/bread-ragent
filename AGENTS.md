@@ -31,6 +31,10 @@
 
 前端代码使用 TypeScript、React 函数组件、Tailwind CSS、Radix UI 和 lucide 图标。组件命名为 `PascalCase.tsx`，Hooks 命名为 `useX.ts`，服务命名为 `xService.ts`，状态存储命名为 `xStore.ts`。
 
+代码开发保证良好的复用性和解耦性，出现重复的逻辑段落，抽离出来封装成一个方法。
+
+开发新功能后，先进行逻辑测试，保证测试用例全部通过。
+
 ## 测试指南
 
 后端测试使用 Spring Boot Test、JUnit 和 Mockito。业务规则优先编写聚焦的 Service 测试；只有在数据库、向量存储或外部配置行为确实相关时才编写集成测试。部分测试需要 PostgreSQL、Redis、Milvus、RocketMQ 或模型凭证；请在测试或 PR 中说明前置条件。

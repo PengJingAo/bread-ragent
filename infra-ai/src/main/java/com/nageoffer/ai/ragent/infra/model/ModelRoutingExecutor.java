@@ -38,6 +38,19 @@ public class ModelRoutingExecutor {
 
     private final ModelHealthStore healthStore;
 
+
+
+    /**
+     * 只负责通用流程  遍历模型集合，选择模型，找客户端，判断是否健康，执行逻辑，失败切换
+     * 其中的ModelCaller是由调用方传进来的 Lambda决定具体执行什么调用逻辑
+     * @param capability
+     * @param targets
+     * @param clientResolver
+     * @param caller
+     * @return
+     * @param <C>
+     * @param <T>
+     */
     public <C, T> T executeWithFallback(
             ModelCapability capability,
             List<ModelTarget> targets,
@@ -50,26 +63,32 @@ public class ModelRoutingExecutor {
 
         Throwable last = null;
         for (ModelTarget target : targets) {
+            //找到目标模型对应的客户端对象
+            //具体实现逻辑，需要调用方Lambda实现，只是确定一个函数规范，传入T类型数据，返回C类型数据（此时T已经确定是ModelTarget）
             C client = clientResolver.apply(target);
             if (client == null) {
                 log.warn("{} provider client missing: provider={}, modelId={}", label, target.candidate().getProvider(), target.id());
                 continue;
             }
+            //判断是否可以使用
             if (!healthStore.allowCall(target.id())) {
                 continue;
             }
 
             try {
                 T response = caller.call(client, target);
+                //标记成功
                 healthStore.markSuccess(target.id());
                 return response;
             } catch (Exception e) {
                 last = e;
+                //标记失败
+                //todo：弄懂如果模型调用失败，如何将其设置为暂时不可用模型的？如何恢复？
                 healthStore.markFailure(target.id());
                 log.warn("{} model failed, fallback to next. modelId={}, provider={}", label, target.id(), target.candidate().getProvider(), e);
             }
         }
-
+        //遍历所有候选模型都无法使用，抛出异常
         throw new RemoteException(
                 "All " + label + " model candidates failed: " + (last == null ? "unknown" : last.getMessage()),
                 last,
