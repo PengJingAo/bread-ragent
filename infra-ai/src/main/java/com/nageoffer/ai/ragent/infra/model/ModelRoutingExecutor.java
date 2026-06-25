@@ -71,20 +71,21 @@ public class ModelRoutingExecutor {
                 continue;
             }
             //判断是否可以使用
-            if (!healthStore.allowCall(target.id())) {
+            ModelHealthStore.CallPermit permit = healthStore.acquireCall(target.id());
+            if (!permit.allowed()) {
                 continue;
             }
 
             try {
                 T response = caller.call(client, target);
-                //标记成功
-                healthStore.markSuccess(target.id());
+                // 带凭证标记成功，避免旧请求乱序返回后覆盖更新的健康状态。
+                healthStore.markSuccess(permit);
                 return response;
             } catch (Exception e) {
                 last = e;
-                //标记失败
+                // 带凭证标记失败，避免旧失败覆盖更新的成功状态。
                 //todo：弄懂如果模型调用失败，如何将其设置为暂时不可用模型的？如何恢复？
-                healthStore.markFailure(target.id());
+                healthStore.markFailure(permit);
                 log.warn("{} model failed, fallback to next. modelId={}, provider={}", label, target.id(), target.candidate().getProvider(), e);
             }
         }

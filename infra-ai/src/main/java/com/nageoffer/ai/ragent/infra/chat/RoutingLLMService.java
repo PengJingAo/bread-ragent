@@ -116,7 +116,8 @@ public class RoutingLLMService implements LLMService {
             if (client == null) {
                 continue;
             }
-            if (!healthStore.allowCall(target.id())) {
+            ModelHealthStore.CallPermit permit = healthStore.acquireCall(target.id());
+            if (!permit.allowed()) {
                 continue;
             }
 
@@ -126,14 +127,14 @@ public class RoutingLLMService implements LLMService {
             try {
                 handle = client.streamChat(request, bridge, target);
             } catch (Exception e) {
-                healthStore.markFailure(target.id());
+                healthStore.markFailure(permit);
                 lastError = e;
                 log.warn("{} 流式请求启动失败，切换下一个模型。modelId：{}，provider：{}",
                         label, target.id(), target.candidate().getProvider(), e);
                 continue;
             }
             if (handle == null) {
-                healthStore.markFailure(target.id());
+                healthStore.markFailure(permit);
                 lastError = new RemoteException(STREAM_START_FAILED_MESSAGE, BaseErrorCode.REMOTE_ERROR);
                 log.warn("{} 流式请求未返回取消句柄，切换下一个模型。modelId：{}，provider：{}",
                         label, target.id(), target.candidate().getProvider());
@@ -143,12 +144,12 @@ public class RoutingLLMService implements LLMService {
             ProbeStreamBridge.ProbeResult result = awaitFirstPacket(bridge, handle, callback);
 
             if (result.isSuccess()) {
-                healthStore.markSuccess(target.id());
+                healthStore.markSuccess(permit);
                 return handle;
             }
 
             // 失败处理
-            healthStore.markFailure(target.id());
+            healthStore.markFailure(permit);
             handle.cancel();
 
             lastError = buildLastErrorAndLog(result, target, label);

@@ -23,15 +23,15 @@ import org.springframework.stereotype.Component;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * 模型健康状态存储器
  * <p>
  * 用于管理和跟踪各个 AI 模型的健康状况，实现断路器模式。
- * 调用方在请求模型前通过 {@link #allowCall(String)} 判断是否允许调用，
- * 调用成功后通过 {@link #markSuccess(String)} 恢复健康状态，
- * 调用失败后通过 {@link #markFailure(String)} 累计失败并触发熔断。
+ * 调用方在请求模型前通过 {@link #acquireCall(String)} 获取调用凭证，
+ * 调用成功后通过 {@link #markSuccess(CallPermit)} 恢复健康状态，
+ * 调用失败后通过 {@link #markFailure(CallPermit)} 累计失败并触发熔断。
  * </p>
  */
 @Component
@@ -51,6 +51,28 @@ public class ModelHealthStore {
      * </p>
      */
     private final Map<String, ModelHealth> healthById = new ConcurrentHashMap<>();
+
+    /**
+     * 模型调用凭证。
+     * <p>
+     * 每次允许调用时都会生成一个递增序号。调用完成后必须带着同一个凭证回写结果，
+     * 这样可以判断成功或失败是否已经落后于更新的调用结果，避免旧请求乱序返回后覆盖新状态。
+     * </p>
+     *
+     * @param modelId 模型 ID
+     * @param sequence 本次调用在该模型内的递增序号
+     * @param allowed 是否允许本次调用
+     */
+    public record CallPermit(String modelId, long sequence, boolean allowed) {
+
+        private static CallPermit denied(String modelId) {
+            return new CallPermit(modelId, 0L, false);
+        }
+
+        private static CallPermit allowed(String modelId, long sequence) {
+            return new CallPermit(modelId, sequence, true);
+        }
+    }
 
     /**
      * 判断模型当前是否不可用，主要用于模型候选列表筛选。
@@ -73,7 +95,7 @@ public class ModelHealthStore {
     }
 
     /**
-     * 判断本次调用是否允许执行。
+     * 获取本次调用凭证。
      * <p>
      * 该方法会根据模型当前的熔断状态做状态流转：
      * CLOSED 直接允许调用；OPEN 到期后转为 HALF_OPEN 并允许一次试探调用；
@@ -81,16 +103,15 @@ public class ModelHealthStore {
      * </p>
      *
      * @param id 模型 ID
-     * @return true 表示允许本次调用，false 表示应跳过该模型
+     * @return 调用凭证，allowed 为 true 表示允许本次调用
      */
-    @SuppressWarnings("BooleanMethodIsAlwaysInverted")
-    public boolean allowCall(String id) {
+    public CallPermit acquireCall(String id) {
         if (id == null) {
-            return false;
+            return CallPermit.denied(null);
         }
         long now = System.currentTimeMillis();
-        // compute 的返回值只能更新 Map，不能直接返回是否允许调用，因此用 AtomicBoolean 把结果带出 lambda。
-        AtomicBoolean allowed = new AtomicBoolean(false);
+        // compute 的返回值只能更新 Map，因此用 AtomicReference 把本次调用凭证带出 lambda。
+        AtomicReference<CallPermit> permitRef = new AtomicReference<>(CallPermit.denied(id));
         // compute 会针对同一个 key 原子化更新状态，避免并发请求把熔断状态改乱。
         //哪里有试探请求？⬇
         //allowCall返回正确了，后续模型就能进行请求，这次请求就是一个试探请求，小心并发问题！！
@@ -111,7 +132,7 @@ public class ModelHealthStore {
                 // 熔断时间结束后进入 HALF_OPEN，放行一个请求用于试探模型是否恢复。
                 v.state = State.HALF_OPEN;
                 v.halfOpenInFlight = true;
-                allowed.set(true);
+                permitRef.set(CallPermit.allowed(id, v.nextSequence()));
                 return v;
             }
             if (v.state == State.HALF_OPEN) {
@@ -121,14 +142,30 @@ public class ModelHealthStore {
                 }
                 // HALF_OPEN 状态没有试探请求时，允许当前请求作为试探请求。
                 v.halfOpenInFlight = true;
-                allowed.set(true);
+                permitRef.set(CallPermit.allowed(id, v.nextSequence()));
                 return v;
             }
             // CLOSED 是正常状态，直接允许调用。
-            allowed.set(true);
+            permitRef.set(CallPermit.allowed(id, v.nextSequence()));
             return v;
         });
-        return allowed.get();
+        return permitRef.get();
+    }
+
+    /**
+     * 判断本次调用是否允许执行。
+     * <p>
+     * 兼容旧调用方式。新代码优先使用 {@link #acquireCall(String)} 获取凭证，
+     * 并在完成后通过凭证回写调用结果。
+     * 注解的作用是关闭“这个 boolean 方法总是被取反使用”的静态检查提示。
+     * </p>
+     *
+     * @param id 模型 ID
+     * @return true 表示允许本次调用，false 表示应跳过该模型
+     */
+    @SuppressWarnings("BooleanMethodIsAlwaysInverted")
+    public boolean allowCall(String id) {
+        return acquireCall(id).allowed();
     }
 
     /**
@@ -148,6 +185,35 @@ public class ModelHealthStore {
                 // 没有历史记录时创建一个默认健康状态即可。
                 return new ModelHealth();
             }
+            v.state = State.CLOSED;
+            v.consecutiveFailures = 0;
+            v.openUntil = 0L;
+            v.halfOpenInFlight = false;
+            return v;
+        });
+    }
+
+    /**
+     * 根据调用凭证标记模型调用成功。
+     * <p>
+     * 如果该成功结果的调用序号早于或等于最新失败序号，说明它是乱序返回的旧结果，
+     * 不能再把已经更新的失败状态重置为健康。
+     * </p>
+     *
+     * @param permit 调用前获取的凭证
+     */
+    public void markSuccess(CallPermit permit) {
+        if (permit == null || !permit.allowed()) {
+            return;
+        }
+        healthById.compute(permit.modelId(), (k, v) -> {
+            if (v == null) {
+                return new ModelHealth();
+            }
+            if (permit.sequence() <= v.latestFailureSequence) {
+                return v;
+            }
+            v.latestSuccessSequence = Math.max(v.latestSuccessSequence, permit.sequence());
             v.state = State.CLOSED;
             v.consecutiveFailures = 0;
             v.openUntil = 0L;
@@ -195,6 +261,49 @@ public class ModelHealthStore {
     }
 
     /**
+     * 根据调用凭证标记模型调用失败。
+     * <p>
+     * 如果该失败结果的调用序号早于或等于最新成功序号，说明它是乱序返回的旧结果，
+     * 不能再把已经恢复健康的状态重新打开熔断。
+     * consecutiveFailures作用是标记在正常状态CLOSED下的失败次数，如果达到阈值，就会进入熔断状态，并将consecutiveFailures清零，
+     * 还设置有恢复时间
+     * </p>
+     *
+     * @param permit 调用前获取的凭证
+     */
+    public void markFailure(CallPermit permit) {
+        if (permit == null || !permit.allowed()) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        healthById.compute(permit.modelId(), (k, v) -> {
+            if (v == null) {
+                v = new ModelHealth();
+            }
+            if (permit.sequence() <= v.latestSuccessSequence) {
+                return v;
+            }
+            v.latestFailureSequence = Math.max(v.latestFailureSequence, permit.sequence());
+            if (v.state == State.HALF_OPEN) {
+                // 试探请求失败，说明模型还没恢复，重新进入 OPEN 熔断状态。
+                v.state = State.OPEN;
+                v.openUntil = now + properties.getSelection().getOpenDurationMs();
+                v.consecutiveFailures = 0;
+                v.halfOpenInFlight = false;
+                return v;
+            }
+            v.consecutiveFailures++;
+            if (v.consecutiveFailures >= properties.getSelection().getFailureThreshold()) {
+                // 连续失败达到阈值，打开熔断器，并设置下一次允许试探的时间。
+                v.state = State.OPEN;
+                v.openUntil = now + properties.getSelection().getOpenDurationMs();
+                v.consecutiveFailures = 0;
+            }
+            return v;
+        });
+    }
+
+    /**
      * 单个模型的健康状态快照。
      */
     private static class ModelHealth {
@@ -218,11 +327,33 @@ public class ModelHealthStore {
          */
         private State state;
 
+        /**
+         * 下一次允许调用时要分配的序号。
+         */
+        private long callSequence;
+
+        /**
+         * 最近一次成功回写的调用序号。
+         */
+        private long latestSuccessSequence;
+
+        /**
+         * 最近一次失败回写的调用序号。
+         */
+        private long latestFailureSequence;
+
         private ModelHealth() {
             this.consecutiveFailures = 0;
             this.openUntil = 0L;
             this.halfOpenInFlight = false;
             this.state = State.CLOSED;
+            this.callSequence = 0L;
+            this.latestSuccessSequence = 0L;
+            this.latestFailureSequence = 0L;
+        }
+
+        private long nextSequence() {
+            return ++callSequence;
         }
     }
 
