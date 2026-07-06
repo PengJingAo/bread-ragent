@@ -93,6 +93,15 @@ public class ModelSelector {
     }
 
     /**
+     * 选择视觉大模型候选列表。
+     *
+     * @return 按配置排序并过滤健康状态后的 VLM 模型目标列表
+     */
+    public List<ModelTarget> selectVlmCandidates() {
+        return selectCandidates(properties.getVlm());
+    }
+
+    /**
      * 解析当前场景下的首选模型 ID。
      * <p>
      * 深度思考模式下，如果配置了 deepThinkingModel，就优先把它排在前面；
