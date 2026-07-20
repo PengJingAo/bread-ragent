@@ -17,6 +17,8 @@ import {
   MessageSquare,
   KeyRound,
   Search,
+  Share2,
+  ShieldCheck,
   Settings,
   Upload,
   Users,
@@ -81,6 +83,11 @@ const menuGroups: MenuGroup[] = [
         icon: Database
       },
       {
+        path: "/admin/knowledge-graph",
+        label: "知识图谱",
+        icon: Share2
+      },
+      {
         id: "intent",
         path: "/admin/intent-tree",
         label: "意图管理",
@@ -128,6 +135,11 @@ const menuGroups: MenuGroup[] = [
         label: "链路追踪",
         icon: Workflow
       },
+      {
+        path: "/admin/change-logs",
+        label: "审计日志",
+        icon: ShieldCheck
+      },
     ]
   },
   {
@@ -155,10 +167,12 @@ const menuGroups: MenuGroup[] = [
 const breadcrumbMap: Record<string, string> = {
   dashboard: "Dashboard",
   knowledge: "知识库管理",
+  "knowledge-graph": "知识图谱",
   "intent-tree": "意图树配置",
   "intent-list": "意图列表",
   ingestion: "数据通道",
   traces: "链路追踪",
+  "change-logs": "审计日志",
   "sample-questions": "示例问题",
   mappings: "关键词映射",
   settings: "系统设置",
@@ -187,6 +201,8 @@ export function AdminLayout() {
   const blurTimeoutRef = useRef<number | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const isDashboardRoute = location.pathname.startsWith("/admin/dashboard");
+  // 知识图谱页要沉浸式铺满，去掉内容区内边距与面包屑
+  const isGraphRoute = location.pathname.startsWith("/admin/knowledge-graph");
 
   const handleLogout = async () => {
     await logout();
@@ -736,22 +752,24 @@ export function AdminLayout() {
           </div>
         </header>
 
-        <div className="admin-content">
-          <nav className="admin-breadcrumbs" aria-label="面包屑">
-            {breadcrumbs.map((item, index) => {
-              const isLast = index === breadcrumbs.length - 1;
-              return (
-                <span key={`${item.label}-${index}`} className="flex items-center gap-2">
-                  {item.to && !isLast ? (
-                    <Link to={item.to}>{item.label}</Link>
-                  ) : (
-                    <span className={isLast ? "text-slate-700" : undefined}>{item.label}</span>
-                  )}
-                  {!isLast && <span>/</span>}
-                </span>
-              );
-            })}
-          </nav>
+        <div className={cn("admin-content", isGraphRoute && "admin-content--full")}>
+          {!isGraphRoute && (
+            <nav className="admin-breadcrumbs" aria-label="面包屑">
+              {breadcrumbs.map((item, index) => {
+                const isLast = index === breadcrumbs.length - 1;
+                return (
+                  <span key={`${item.label}-${index}`} className="flex items-center gap-2">
+                    {item.to && !isLast ? (
+                      <Link to={item.to}>{item.label}</Link>
+                    ) : (
+                      <span className={isLast ? "text-slate-700" : undefined}>{item.label}</span>
+                    )}
+                    {!isLast && <span>/</span>}
+                  </span>
+                );
+              })}
+            </nav>
+          )}
           <Outlet />
         </div>
       </div>
