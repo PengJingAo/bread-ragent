@@ -26,6 +26,7 @@ import com.nageoffer.ai.ragent.rag.core.rewrite.RewriteResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -47,6 +48,9 @@ public class IntentResolver {
     @Qualifier("defaultIntentClassifier")
     private final IntentClassifier intentClassifier;
     private final Executor intentClassifyExecutor;
+
+    @Value("${rag.intent.max-count-per-sub-question:3}")
+    private int maxCountPerSubQuestion;
 
     @RagTraceNode(name = "intent-resolve", type = "INTENT")
     public List<SubQuestionIntent> resolve(RewriteResult rewriteResult) {
@@ -91,9 +95,11 @@ public class IntentResolver {
     //单个问题进行意图识别
     private List<NodeScore> classifyIntents(String question) {
         List<NodeScore> scores = intentClassifier.classifyTargets(question);
+        // 单个子问题的候选意图数可配置，默认保持历史最多 3 个意图的行为。
+        int perQuestionLimit = Math.max(1, Math.min(maxCountPerSubQuestion, MAX_INTENT_COUNT));
         return scores.stream()
                 .filter(ns -> ns.getScore() >= INTENT_MIN_SCORE)
-                .limit(MAX_INTENT_COUNT)
+                .limit(perQuestionLimit)
                 .toList();
     }
 

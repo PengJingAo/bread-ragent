@@ -141,6 +141,11 @@ public class SearchChannelProperties {
         private String mode = "both";
 
         /**
+         * 关键词检索参与门槛：仅高置信 KB 意图才进行定向关键词增强。
+         */
+        private double minIntentScore = 0.8;
+
+        /**
          * TopK 倍数
          * 关键词召回更多候选，后续通过融合与 Rerank 筛选
          */

@@ -52,6 +52,11 @@ rag:
       index: rag_keyword_store  # 全库共享索引，按 collection_name 字段区分知识库
       analyzer: ik_max_word
       search-analyzer: ik_smart
+    backfill:
+      enabled: false
+      recreate-index: true
+      batch-size: 500
+      fail-on-error: true
 
   default:
     collection-name: rag_default_store
@@ -62,8 +67,14 @@ rag:
   query-rewrite:
     enabled: true
 
+  intent:
+    max-count-per-sub-question: 3
+
   rerank:
     enabled: true
+
+  answer:
+    max-tokens: 0  # RAG 回答最大 token 数；0 表示不限制，评测时可覆盖为较小值抑制过度展开
 
   rate-limit:
     global:
@@ -112,6 +123,7 @@ rag:
       keyword:
         enabled: true
         mode: both
+        min-intent-score: 0.8
         top-k-multiplier: 2
     fusion:
       strategy: rrf

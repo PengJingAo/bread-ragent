@@ -70,7 +70,16 @@ public class KeywordSearchChannel implements SearchChannel {
 
     @Override
     public boolean isEnabled(SearchContext context) {
-        return properties.getChannels().getKeyword().isEnabled();
+        SearchChannelProperties.Keyword keyword = properties.getChannels().getKeyword();
+        if (!keyword.isEnabled()) {
+            return false;
+        }
+        List<NodeScore> kbIntents = extractHighConfidenceKbIntents(context);
+        if (CollUtil.isEmpty(kbIntents)) {
+            log.info("跳过关键词检索：未识别到高置信 KB 意图，阈值 {}", keyword.getMinIntentScore());
+            return false;
+        }
+        return true;
     }
 
     @Override
@@ -108,7 +117,7 @@ public class KeywordSearchChannel implements SearchChannel {
      */
     private List<String> resolveCollections(SearchContext context) {
         String mode = properties.getChannels().getKeyword().getMode();
-        List<String> intentCollections = extractIntentCollections(context);
+        List<String> intentCollections = extractHighConfidenceIntentCollections(context);
 
         if (MODE_GLOBAL.equalsIgnoreCase(mode)) {
             return globalCollections();
@@ -116,8 +125,8 @@ public class KeywordSearchChannel implements SearchChannel {
         if (MODE_INTENT.equalsIgnoreCase(mode)) {
             return intentCollections;
         }
-        // both
-        return CollUtil.isNotEmpty(intentCollections) ? intentCollections : globalCollections();
+        // both：关键词通道只做高置信 KB 意图的定向增强，避免意图模糊时扩大噪声召回。
+        return intentCollections;
     }
 
     /**
@@ -131,18 +140,23 @@ public class KeywordSearchChannel implements SearchChannel {
     /**
      * 从意图识别结果提取 KB 意图对应的 collection 名称
      */
-    private List<String> extractIntentCollections(SearchContext context) {
+    private List<String> extractHighConfidenceIntentCollections(SearchContext context) {
+        return extractHighConfidenceKbIntents(context).stream()
+                .map(ns -> ns.getNode().getCollectionName())
+                .filter(StrUtil::isNotBlank)
+                .distinct()
+                .toList();
+    }
+
+    private List<NodeScore> extractHighConfidenceKbIntents(SearchContext context) {
         if (CollUtil.isEmpty(context.getIntents())) {
             return List.of();
         }
         List<NodeScore> allScores = context.getIntents().stream()
                 .flatMap(si -> si.nodeScores().stream())
                 .toList();
-        return NodeScoreFilters.kb(allScores).stream()
-                .map(ns -> ns.getNode().getCollectionName())
-                .filter(StrUtil::isNotBlank)
-                .distinct()
-                .toList();
+        double minScore = properties.getChannels().getKeyword().getMinIntentScore();
+        return NodeScoreFilters.kb(allScores, minScore);
     }
 
     private SearchChannelResult emptyResult(long startTime) {

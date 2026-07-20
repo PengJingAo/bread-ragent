@@ -57,4 +57,12 @@ public class RAGConfigProperties {
      */
     @Value("${rag.rerank.enabled:true}")
     private Boolean rerankEnabled;
+
+    /**
+     * RAG 回答生成的最大 token 数。
+     * <p>
+     * 默认 0 表示不限制，评测场景可显式配置较小值，降低回答过度展开导致的忠诚度损失。
+     */
+    @Value("${rag.answer.max-tokens:0}")
+    private Integer answerMaxTokens;
 }

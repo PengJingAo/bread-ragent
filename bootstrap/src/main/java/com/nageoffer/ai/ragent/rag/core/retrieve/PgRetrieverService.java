@@ -45,7 +45,7 @@ public class PgRetrieverService implements RetrieverService {
 
     @Override
     public List<RetrievedChunk> retrieveByVector(float[] vector, RetrieveRequest request) {
-        // 单库检索：按 collection_name 列过滤，走 btree 索引
+        // 单库检索：历史数据把 collection 信息保存在 metadata 中，避免依赖额外物理列。
         return queryByCollections(vector, List.of(request.getCollectionName()), request.getTopK());
     }
 
@@ -89,7 +89,7 @@ public class PgRetrieverService implements RetrieverService {
         args[collectionNames.size() + 2] = limit;
 
         // noinspection SqlDialectInspection,SqlNoDataSourceInspection
-        return jdbcTemplate.query("SELECT id, content, 1 - (embedding <=> ?::vector) AS score FROM t_knowledge_vector WHERE collection_name IN (" + placeholders + ") ORDER BY embedding <=> ?::vector LIMIT ?",
+        return jdbcTemplate.query("SELECT id, content, 1 - (embedding <=> ?::vector) AS score FROM t_knowledge_vector WHERE metadata->>'collection_name' IN (" + placeholders + ") ORDER BY embedding <=> ?::vector LIMIT ?",
                 (rs, rowNum) -> RetrievedChunk.builder()
                         .id(rs.getString("id"))
                         .text(rs.getString("content"))

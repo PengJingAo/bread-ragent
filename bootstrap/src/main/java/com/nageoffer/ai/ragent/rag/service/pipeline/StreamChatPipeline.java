@@ -34,6 +34,7 @@ import com.nageoffer.ai.ragent.rag.core.prompt.RAGPromptService;
 import com.nageoffer.ai.ragent.rag.core.retrieve.RetrievalEngine;
 import com.nageoffer.ai.ragent.rag.core.rewrite.QueryRewriteService;
 import com.nageoffer.ai.ragent.rag.core.rewrite.RewriteResult;
+import com.nageoffer.ai.ragent.rag.config.RAGConfigProperties;
 import com.nageoffer.ai.ragent.rag.dto.IntentGroup;
 import com.nageoffer.ai.ragent.rag.dto.RetrievalContext;
 import com.nageoffer.ai.ragent.rag.dto.SubQuestionIntent;
@@ -71,6 +72,7 @@ public class StreamChatPipeline {
     private final RAGPromptService promptBuilder;
     private final PromptTemplateLoader promptTemplateLoader;
     private final StreamTaskManager taskManager;
+    private final RAGConfigProperties ragConfigProperties;
 
     /**
      * 执行流式对话管道
@@ -230,8 +232,17 @@ public class StreamChatPipeline {
                 .thinking(deepThinking)
                 .temperature(ctx.hasMcp() ? 0.3D : 0D)  // MCP 场景稍微放宽温度
                 .topP(ctx.hasMcp() ? 0.8D : 1D)
+                .maxTokens(resolveAnswerMaxTokens())
                 .build();
 
         return llmService.streamChat(chatRequest, callback);
+    }
+
+    /**
+     * 解析 RAG 回答长度上限；<=0 表示沿用模型默认值，避免影响普通运行。
+     */
+    private Integer resolveAnswerMaxTokens() {
+        Integer maxTokens = ragConfigProperties.getAnswerMaxTokens();
+        return maxTokens != null && maxTokens > 0 ? maxTokens : null;
     }
 }

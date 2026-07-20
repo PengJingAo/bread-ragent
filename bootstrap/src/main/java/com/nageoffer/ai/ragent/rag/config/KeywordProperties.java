@@ -43,6 +43,11 @@ public class KeywordProperties {
     private Es es = new Es();
 
     /**
+     * 历史 chunk 关键词索引回灌配置
+     */
+    private Backfill backfill = new Backfill();
+
+    /**
      * 全部知识库共用的物理索引名称
      * <p>
      * 与 Milvus 共享 collection、PG 共享表同构：单索引承载所有知识库，按 collection_name 字段区分
@@ -73,5 +78,29 @@ public class KeywordProperties {
          * 查询分词器
          */
         private String searchAnalyzer = "ik_smart";
+    }
+
+    @Data
+    public static class Backfill {
+
+        /**
+         * 是否在应用启动时从 PG 向量表回灌历史 chunk 到关键词索引
+         */
+        private boolean enabled = false;
+
+        /**
+         * 回灌前是否删除并重建共享索引，避免历史脏数据影响评测
+         */
+        private boolean recreateIndex = true;
+
+        /**
+         * 每批从 PG 读取并写入 ES 的 chunk 数量
+         */
+        private int batchSize = 500;
+
+        /**
+         * 回灌失败时是否中断应用启动
+         */
+        private boolean failOnError = true;
     }
 }
