@@ -21,6 +21,7 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.framework.convention.ChatMessage;
 import com.nageoffer.ai.ragent.framework.convention.ChatRequest;
+import com.nageoffer.ai.ragent.framework.convention.SourceRef;
 import com.nageoffer.ai.ragent.infra.chat.LLMService;
 import com.nageoffer.ai.ragent.infra.chat.StreamCallback;
 import com.nageoffer.ai.ragent.infra.chat.StreamCancellationHandle;
@@ -35,6 +36,9 @@ import com.nageoffer.ai.ragent.rag.core.retrieval.RetrievalEngine;
 import com.nageoffer.ai.ragent.rag.core.rewrite.QueryRewriteService;
 import com.nageoffer.ai.ragent.rag.core.rewrite.RewriteResult;
 import com.nageoffer.ai.ragent.rag.config.RAGConfigProperties;
+import com.nageoffer.ai.ragent.rag.core.source.CitationContextEnricher;
+import com.nageoffer.ai.ragent.rag.core.source.GroundingChunksAssembler;
+import com.nageoffer.ai.ragent.rag.core.source.SourcesAssembler;
 import com.nageoffer.ai.ragent.rag.dto.IntentGroup;
 import com.nageoffer.ai.ragent.rag.dto.RetrievalContext;
 import com.nageoffer.ai.ragent.rag.dto.SubQuestionIntent;
@@ -71,6 +75,9 @@ public class StreamChatPipeline {
     private final PromptTemplateLoader promptTemplateLoader;
     private final StreamTaskManager taskManager;
     private final RAGConfigProperties ragConfigProperties;
+    private final SourcesAssembler sourcesAssembler;
+    private final GroundingChunksAssembler groundingChunksAssembler;
+    private final CitationContextEnricher citationContextEnricher;
 
     /**
      * 执行流式对话管道
@@ -99,11 +106,10 @@ public class StreamChatPipeline {
     // ==================== 流水线阶段 ====================
 
     private void loadMemory(StreamChatContext ctx) {
-        List<ChatMessage> history = memoryService.loadAndAppend(
-                ctx.getConversationId(),
-                ctx.getUserId(),
-                ChatMessage.user(ctx.getQuestion())
-        );
+        List<ChatMessage> history = memoryService.load(ctx.getConversationId(), ctx.getUserId());
+        String questionMessageId = memoryService.append(
+                ctx.getConversationId(), ctx.getUserId(), ChatMessage.user(ctx.getQuestion()));
+        ctx.getCallback().onReplyToMessageId(questionMessageId);
         ctx.setHistory(history);
     }
 
@@ -172,6 +178,15 @@ public class StreamChatPipeline {
     private void streamRagResponse(StreamChatContext ctx, RetrievalContext retrievalCtx) {
         // 聚合所有意图用于 prompt 规划
         IntentGroup mergedGroup = intentResolver.mergeIntentGroup(ctx.getSubIntents());
+
+        // 检索完成后建立唯一来源编号：同一列表用于完成事件、来源面板与消息落库，开启引用时还作为行内角标编号
+        List<SourceRef> sources = sourcesAssembler.assemble(retrievalCtx.getIntentChunks());
+        ctx.getCallback().onSources(sources);
+        // 开关关闭时这一步只负责清掉上下文里的内部 docId，不注入编号
+        retrievalCtx.setKbContext(citationContextEnricher.enrich(retrievalCtx.getKbContext(), sources));
+
+        // 装配 grounding 片段随消息落库 供答案后推荐追问生成 grounding（不参与 prompt）
+        ctx.getCallback().onGroundingChunks(groundingChunksAssembler.assemble(retrievalCtx.getIntentChunks()));
 
         StreamCancellationHandle handle = streamLLMResponse(
                 ctx.getRewriteResult(),

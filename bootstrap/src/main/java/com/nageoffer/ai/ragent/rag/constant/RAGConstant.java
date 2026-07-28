@@ -110,6 +110,13 @@ public class RAGConstant {
     public static final String RAG_ENTERPRISE_PROMPT_PATH = "prompt/answer-chat-kb.st";
 
     /**
+     * 知识资料回答的行内引用规则
+     * <p>
+     * 仅在 {@code rag.citation.enabled=true} 且存在知识库上下文时，由 Prompt 编排层追加
+     */
+    public static final String ANSWER_CITATION_RULES_PROMPT_PATH = "prompt/answer-citation-rules.st";
+
+    /**
      * MCP 工具参数提取提示词模板路径
      * 用于从用户问题中提取工具调用参数
      */
@@ -132,6 +139,12 @@ public class RAGConstant {
      * 兼顾动态数据片段与知识库内容的综合回答
      */
     public static final String MCP_KB_MIXED_PROMPT_PATH = "prompt/answer-chat-mcp-kb-mixed.st";
+
+    /**
+     * 推荐追问问题生成提示词模板路径
+     * 通过 {@code {question}}、{@code {answer}}、{@code {count}} 注入问答与生成数量
+     */
+    public static final String RECOMMENDED_QUESTIONS_PROMPT_PATH = "prompt/recommended-questions.st";
 
     // ==================== 上下文格式化模板（单文件多 section） ====================
 

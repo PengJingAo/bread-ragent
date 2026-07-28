@@ -32,7 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>
  * 覆盖上下文优化的核心行为：
  * 1. 按文档聚合：文档之间按相关性（各文档最佳块排名）排序，文档内部按 chunkIndex 还原原文顺序
- * 2. 文档标题作为 source 内部锚点，剥掉文件扩展名；docId 缺失的块单独成组、无 source
+ * 2. 只注入内部 docId 作为锚点，文档名（含文件名）绝不进上下文；docId 缺失的块单独成组、无任何属性
  * 3. 同文档的块按 index 排好后用单换行顺次拼接
  */
 class DefaultContextFormatterTest {
@@ -57,20 +57,24 @@ class DefaultContextFormatterTest {
                 chunk("a1", "A-idx1正文", "docA", "员工手册.pdf", 1, 0.7f),
                 chunk("x0", "孤块正文", null, null, null, 0.6f));
 
-        String result = formatter().formatKbContext(List.of(), Map.of("mc", chunks), 100);
+        // 模板资源在 Windows 工作区可能使用 CRLF，断言统一按 LF 比较，避免平台相关失败。
+        String result = formatter().formatKbContext(List.of(), Map.of("mc", chunks), 100)
+                .replace("\r\n", "\n");
 
         // 文档 A 整体在文档 B 之前（A 的最佳块排名更高），孤块最后
         assertTrue(result.indexOf("A-idx1正文") < result.indexOf("A-idx3正文"), "同文档内应按 chunkIndex 升序");
         assertTrue(result.indexOf("A-idx3正文") < result.indexOf("B-idx0正文"), "文档 A 整块应在文档 B 之前");
         assertTrue(result.indexOf("B-idx0正文") < result.indexOf("孤块正文"), "无归属孤块应排在最后");
 
-        // 标题作为 source 内部锚点，且剥掉扩展名
-        assertTrue(result.contains("source=\"员工手册\""), "应带上文档标题且剥掉扩展名");
-        assertTrue(result.contains("source=\"报销政策\""));
-        assertFalse(result.contains("员工手册.pdf"), "扩展名不应出现");
+        // 只注入内部 docId，文档名一律不进上下文（模型拿不到名字才不会写"出自《XX》"）
+        assertTrue(result.contains("data-ragent-doc-id=\"docA\""), "应携带内部 docId 供后续注入引用编号");
+        assertTrue(result.contains("data-ragent-doc-id=\"docB\""));
+        assertFalse(result.contains("source="), "不应再注入 source 属性");
+        assertFalse(result.contains("员工手册"), "文档名不得进入上下文");
+        assertFalse(result.contains("报销政策"));
 
-        // 孤块单独成组、无 source 属性
-        assertTrue(result.contains("<content>\n孤块正文\n</content>"), "docId 缺失应渲染为无 source 的独立块");
+        // 孤块单独成组、无任何属性
+        assertTrue(result.contains("<content>\n孤块正文\n</content>"), "docId 缺失应渲染为无属性的独立块");
     }
 
     @Test
@@ -83,5 +87,15 @@ class DefaultContextFormatterTest {
         String result = formatter().formatKbContext(List.of(), Map.of("mc", chunks), 100);
 
         assertTrue(result.contains("第一块正文\n第二块正文"), "同文档块之间用单换行拼接");
+    }
+
+    @Test
+    void keepsInternalDocumentIdAsOnlyAttribute() {
+        List<RetrievedChunk> chunks = List.of(
+                chunk("c1", "无标题正文", "docC", null, 0, 0.9f));
+
+        String result = formatter().formatKbContext(List.of(), Map.of("mc", chunks), 100);
+
+        assertTrue(result.contains("<content data-ragent-doc-id=\"docC\">"));
     }
 }

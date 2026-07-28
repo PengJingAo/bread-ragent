@@ -39,15 +39,23 @@ public class PgVectorRetrieverService implements VectorRetrieverService {
 
     @Override
     public List<RetrievedChunk> retrieve(RetrieveRequest request) {
-        List<Float> embedding = embeddingService.embed(request.getQuery());
-        float[] vector = normalize(toArray(embedding));
+        float[] vector = embedAndNormalize(request.getQuery());
         return retrieveByVector(vector, request);
     }
 
     @Override
     public List<RetrievedChunk> retrieveByVector(float[] vector, RetrieveRequest request) {
-        // 单库检索：历史数据把 collection 信息保存在 metadata 中，避免依赖额外物理列。
-        return queryByCollections(vector, List.of(request.getCollectionName()), request.getTopK());
+        List<String> collectionNames = request.getEffectiveCollectionNames();
+        if (collectionNames.isEmpty()) {
+            return List.of();
+        }
+        // 单个或多个逻辑库都通过一条 SQL 过滤，LIMIT 是整个范围的总 TopK
+        return queryByCollections(vector, collectionNames, request.getTopK());
+    }
+
+    @Override
+    public float[] embedAndNormalize(String query) {
+        return normalize(toArray(embeddingService.embed(query)));
     }
 
     @Override
@@ -60,8 +68,7 @@ public class PgVectorRetrieverService implements VectorRetrieverService {
         if (collectionNames == null || collectionNames.isEmpty()) {
             return List.of();
         }
-        List<Float> embedding = embeddingService.embed(query);
-        float[] vector = normalize(toArray(embedding));
+        float[] vector = embedAndNormalize(query);
         // 全局检索：单条 SQL 在多库范围内做带总预算的 TopN 召回，替代逐库 fan-out
         return queryByCollections(vector, collectionNames, candidateBudget);
     }
@@ -89,6 +96,7 @@ public class PgVectorRetrieverService implements VectorRetrieverService {
         args[collectionNames.size() + 1] = vectorLiteral;
         args[collectionNames.size() + 2] = limit;
 
+        // 本地 PG 写入、删除与关键词回灌均以 metadata.collection_name 为准，避免与物理列默认值产生数据分叉。
         // noinspection SqlDialectInspection,SqlNoDataSourceInspection
         return jdbcTemplate.query("SELECT id, content, 1 - (embedding <=> ?::vector) AS score FROM t_knowledge_vector WHERE metadata->>'collection_name' IN (" + placeholders + ") ORDER BY embedding <=> ?::vector LIMIT ?",
                 (rs, rowNum) -> RetrievedChunk.builder()

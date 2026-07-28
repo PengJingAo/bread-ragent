@@ -29,10 +29,12 @@ import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
  * @param provider  提供商配置，包含模型提供商的相关信息
  *
  * record根据括号中的参数自动生成私有final字段，规范全参构造器，访问器方法
+ * @param timeoutMs 本次调用的超时预算（毫秒），来自命中的档位配置；null 表示不额外限制，走 HTTP 客户端默认
  */
 public record ModelTarget(
         String id,
         AIModelProperties.ModelCandidate candidate,
-        AIModelProperties.ProviderConfig provider
+        AIModelProperties.ProviderConfig provider,
+        Long timeoutMs
 ) {
 }
