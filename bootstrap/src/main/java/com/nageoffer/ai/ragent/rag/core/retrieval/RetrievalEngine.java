@@ -197,6 +197,10 @@ public class RetrievalEngine {
     }
 
     private KbResult retrieveAndRerank(SubQuestionIntent intent, List<NodeScore> kbIntents, RetrievalBudget budget) {
+        // SYSTEM/MCP 意图不应触发全局知识库兜底，否则会产生越界检索和无效上下文。
+        if (CollUtil.isEmpty(kbIntents)) {
+            return KbResult.empty();
+        }
         // 使用多通道检索引擎（是否启用全局检索由置信度阈值决定）
         List<SubQuestionIntent> subIntents = List.of(intent);
         List<RetrievedChunk> chunks = multiChannelRetrievalEngine.retrieveKnowledgeChannels(subIntents, budget);
