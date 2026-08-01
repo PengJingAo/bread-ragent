@@ -404,8 +404,20 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
 
             return new ChunkProcessResult(chunks, extractDuration, chunkDuration, embedDuration);
         } catch (Exception e) {
-            throw new RuntimeException("文档内容提取或分块失败", e);
+            // 保留最底层异常信息，便于从分块日志直接定位解析、切块或 Embedding 故障。
+            throw new RuntimeException("文档内容提取或分块失败：" + rootCauseMessage(e), e);
         }
+    }
+
+    private String rootCauseMessage(Throwable throwable) {
+        Throwable rootCause = throwable;
+        while (rootCause.getCause() != null && rootCause.getCause() != rootCause) {
+            rootCause = rootCause.getCause();
+        }
+        String message = rootCause.getMessage();
+        return message == null || message.isBlank()
+                ? rootCause.getClass().getSimpleName()
+                : message;
     }
 
     private record ChunkProcessResult(List<VectorChunk> chunks, long extractDuration, long chunkDuration,
