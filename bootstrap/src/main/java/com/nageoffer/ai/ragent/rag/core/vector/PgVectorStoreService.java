@@ -46,12 +46,15 @@ public class PgVectorStoreService implements VectorStoreService {
 
         // noinspection SqlDialectInspection,SqlNoDataSourceInspection
         jdbcTemplate.batchUpdate(
-                "INSERT INTO t_knowledge_vector (id, content, metadata, embedding) VALUES (?, ?, ?::jsonb, ?::vector)",
+                "INSERT INTO t_knowledge_vector (id, collection_name, content, metadata, embedding) " +
+                        "VALUES (?, ?, ?, ?::jsonb, ?::vector)",
                 chunks, chunks.size(), (ps, chunk) -> {
                     ps.setString(1, chunk.getChunkId());
-                    ps.setString(2, chunk.getContent());
-                    ps.setString(3, buildMetadataJson(collectionName, docId, chunk));
-                    ps.setString(4, toVectorLiteral(chunk.getEmbedding()));
+                    // collection_name 是新版表结构的非空物理列；metadata 中仍冗余保留，兼容现有检索与回灌逻辑。
+                    ps.setString(2, collectionName);
+                    ps.setString(3, chunk.getContent());
+                    ps.setString(4, buildMetadataJson(collectionName, docId, chunk));
+                    ps.setString(5, toVectorLiteral(chunk.getEmbedding()));
                 });
 
         log.info("批量写入向量到 PostgreSQL，collectionName={}, docId={}, count={}", collectionName, docId, chunks.size());
@@ -87,9 +90,12 @@ public class PgVectorStoreService implements VectorStoreService {
     public void updateChunk(String collectionName, String docId, VectorChunk chunk) {
         // noinspection SqlDialectInspection,SqlNoDataSourceInspection
         jdbcTemplate.update(
-                "INSERT INTO t_knowledge_vector (id, content, metadata, embedding) VALUES (?, ?, ?::jsonb, ?::vector) " +
-                        "ON CONFLICT (id) DO UPDATE SET content = EXCLUDED.content, metadata = EXCLUDED.metadata, embedding = EXCLUDED.embedding",
+                "INSERT INTO t_knowledge_vector (id, collection_name, content, metadata, embedding) " +
+                        "VALUES (?, ?, ?, ?::jsonb, ?::vector) " +
+                        "ON CONFLICT (id) DO UPDATE SET collection_name = EXCLUDED.collection_name, " +
+                        "content = EXCLUDED.content, metadata = EXCLUDED.metadata, embedding = EXCLUDED.embedding",
                 chunk.getChunkId(),
+                collectionName,
                 chunk.getContent(),
                 buildMetadataJson(collectionName, docId, chunk),
                 toVectorLiteral(chunk.getEmbedding())
@@ -102,7 +108,7 @@ public class PgVectorStoreService implements VectorStoreService {
             meta.putAll(chunk.getMetadata());
         }
 
-        // PG 向量表的历史数据没有独立 collection_name 列，统一把库名写入 metadata 供检索过滤。
+        // metadata 中保留库名，兼容既有按 JSONB 过滤的检索和关键词索引回灌流程。
         meta.put("collection_name", collectionName);
         meta.put("doc_id", docId);
         meta.put("chunk_index", chunk.getIndex());
