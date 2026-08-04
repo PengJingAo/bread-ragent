@@ -14,7 +14,8 @@
 
     <properties>
         <java.version>17</java.version>
-        <spring-boot.version>3.5.7</spring-boot.version>
+        <spring-boot.version>3.5.15</spring-boot.version>
+        <spring-ai.version>1.1.8</spring-ai.version>
         <milvus-sdk.version>2.6.6</milvus-sdk.version>
         <tika.version>3.2.3</tika.version>
         <hutool-all.version>5.8.37</hutool-all.version>
@@ -33,6 +34,8 @@
         <bizlog-sdk.version>3.0.6</bizlog-sdk.version>
         <javax-validation-api.version>2.0.1.Final</javax-validation-api.version>
         <spotless-maven-plugin.version>2.22.1</spotless-maven-plugin.version>
+        <maven-compiler-plugin.version>3.11.0</maven-compiler-plugin.version>
+        <maven-surefire-plugin.version>3.1.2</maven-surefire-plugin.version>
         <!-- surefire 配置中的 @{argLine} 需要该属性存在（通常由 jacoco 定义）；
              未接入 jacoco 时给出空默认值，避免 fork 出的测试 JVM 收到字面量 @{argLine} 直接崩溃 -->
         <argLine/>
@@ -51,6 +54,15 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-dependencies</artifactId>
                 <version>${spring-boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- Spring AI 1.1.x 与 Spring Boot 3.5.x 对齐；仅在基础设施层使用。 -->
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-bom</artifactId>
+                <version>${spring-ai.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -232,6 +244,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
+                <version>${maven-compiler-plugin.version}</version>
                 <configuration>
                     <source>${java.version}</source>
                     <target>${java.version}</target>
@@ -255,6 +268,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
+                <version>${maven-surefire-plugin.version}</version>
                 <configuration>
                     <argLine>@{argLine} -javaagent:${org.mockito:mockito-core:jar}</argLine>
                 </configuration>

@@ -147,6 +147,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
 
         SourceType sourceType = SourceType.normalize(requestParam.getSourceType());
         validateSourceAndSchedule(sourceType, requestParam);
+        //将目标文件上传到对象存储器中
         StoredFileDTO stored = resolveStoredFile(kbDO.getCollectionName(), sourceType, requestParam.getSourceLocation(), file);
         // 前置拦截：与分块阶段同一套 MIME 路由，无解析器的类型直接拒绝，不落库不发 MQ
         if (parserSelector.selectByMimeType(stored.getMimeType()) == null) {
@@ -862,6 +863,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
     }
 
     private void validateSourceAndSchedule(SourceType sourceType, KnowledgeDocumentUploadRequest request) {
+        //去除字符串首尾空白字符
         String sourceLocation = StrUtil.trimToNull(request.getSourceLocation());
         if (SourceType.URL == sourceType && !StringUtils.hasText(sourceLocation)) {
             throw new ClientException("来源地址不能为空");

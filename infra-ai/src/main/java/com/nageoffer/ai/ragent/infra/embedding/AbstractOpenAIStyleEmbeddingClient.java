@@ -29,11 +29,13 @@ import com.nageoffer.ai.ragent.infra.http.ModelClientErrorType;
 import com.nageoffer.ai.ragent.infra.http.ModelClientException;
 import com.nageoffer.ai.ragent.infra.http.ModelUrlResolver;
 import com.nageoffer.ai.ragent.infra.model.ModelTarget;
+import com.nageoffer.ai.ragent.infra.springai.SpringAiEmbeddingRuntime;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -48,6 +50,9 @@ import java.util.List;
 public abstract class AbstractOpenAIStyleEmbeddingClient implements EmbeddingClient {
 
     protected final OkHttpClient httpClient;
+
+    @Autowired
+    private SpringAiEmbeddingRuntime springAiRuntime;
 
     protected AbstractOpenAIStyleEmbeddingClient(OkHttpClient httpClient) {
         this.httpClient = httpClient;
@@ -113,6 +118,23 @@ public abstract class AbstractOpenAIStyleEmbeddingClient implements EmbeddingCli
      * 构建请求、发送 HTTP、解析 OpenAI 格式响应
      */
     protected List<List<Float>> doEmbed(List<String> texts, ModelTarget target) {
+        switch (springAiRuntime.mode(provider())) {
+            case SPRING_AI -> {
+                return springAiRuntime.embed(texts, target);
+            }
+            case SHADOW -> {
+                List<List<Float>> legacyResult = doLegacyEmbed(texts, target);
+                springAiRuntime.shadowEmbed(texts, target, legacyResult);
+                return legacyResult;
+            }
+            case LEGACY -> {
+                return doLegacyEmbed(texts, target);
+            }
+        }
+        throw new IllegalStateException("未知 AI 运行模式");
+    }
+
+    private List<List<Float>> doLegacyEmbed(List<String> texts, ModelTarget target) {
         AIModelProperties.ProviderConfig provider = HttpResponseHelper.requireProvider(target, provider());
         if (requiresApiKey()) {
             HttpResponseHelper.requireApiKey(provider, provider());

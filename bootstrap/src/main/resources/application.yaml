@@ -7,6 +7,12 @@ spring:
   application:
     name: ragent${unique-name:}-service
 
+  # Spring AI 模型由现有动态模型路由手工创建，禁止自动注册单一 ChatModel。
+  ai:
+    model:
+      chat: none
+      embedding: none
+
   servlet:
     multipart:
       max-file-size: 50MB
@@ -328,3 +334,22 @@ app:
   demo-mode: false
   eval:
     enabled: true
+
+# Spring AI 渐进式迁移开关。默认完全走旧链路，可按 provider 单独灰度。
+ragent:
+  ai:
+    runtime: legacy
+    provider-runtime:
+      aihubmix: legacy
+      bailian: legacy
+      siliconflow: legacy
+      ollama: legacy
+  chat-flow:
+    # legacy 保留原有硬编码流水线；nodes 启用等价的节点化编排
+    runtime: legacy
+
+logging:
+  level:
+    root: INFO
+    com.nageoffer.ai.ragent: DEBUG
+    org.springframework.web.servlet.DispatcherServlet: DEBUG

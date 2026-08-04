@@ -33,6 +33,7 @@ import com.nageoffer.ai.ragent.infra.http.ModelClientErrorType;
 import com.nageoffer.ai.ragent.infra.http.ModelClientException;
 import com.nageoffer.ai.ragent.infra.http.ModelUrlResolver;
 import com.nageoffer.ai.ragent.infra.model.ModelTarget;
+import com.nageoffer.ai.ragent.infra.springai.SpringAiChatRuntime;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.Call;
 import okhttp3.OkHttpClient;
@@ -65,6 +66,8 @@ public abstract class AbstractOpenAIStyleChatClient implements ChatClient {
     private Executor modelStreamExecutor;
     @Autowired
     private RagStreamTraceSupport streamTraceSupport;
+    @Autowired
+    private SpringAiChatRuntime springAiRuntime;
 
     protected Gson gson = new Gson();
 
@@ -103,6 +106,23 @@ public abstract class AbstractOpenAIStyleChatClient implements ChatClient {
     // ==================== 模板方法：同步调用 ====================
 
     protected String doChat(ChatRequest request, ModelTarget target) {
+        switch (springAiRuntime.mode(provider())) {
+            case SPRING_AI -> {
+                return springAiRuntime.chat(request, target);
+            }
+            case SHADOW -> {
+                String legacyResult = doLegacyChat(request, target);
+                springAiRuntime.shadowChat(request, target, legacyResult);
+                return legacyResult;
+            }
+            case LEGACY -> {
+                return doLegacyChat(request, target);
+            }
+        }
+        throw new IllegalStateException("未知 AI 运行模式");
+    }
+
+    private String doLegacyChat(ChatRequest request, ModelTarget target) {
         AIModelProperties.ProviderConfig provider = HttpResponseHelper.requireProvider(target, provider());
         if (requiresApiKey()) {
             HttpResponseHelper.requireApiKey(provider, provider());
@@ -154,6 +174,20 @@ public abstract class AbstractOpenAIStyleChatClient implements ChatClient {
     // ==================== 模板方法：流式调用 ====================
 
     protected StreamCancellationHandle doStreamChat(ChatRequest request, StreamCallback callback, ModelTarget target) {
+        switch (springAiRuntime.mode(provider())) {
+            case SPRING_AI -> {
+                return springAiRuntime.streamChat(provider(), request, callback, target);
+            }
+            case SHADOW -> springAiRuntime.shadowStream(request, target);
+            case LEGACY -> {
+                // 继续执行原有流式实现。
+            }
+        }
+        return doLegacyStreamChat(request, callback, target);
+    }
+
+    private StreamCancellationHandle doLegacyStreamChat(
+            ChatRequest request, StreamCallback callback, ModelTarget target) {
         AIModelProperties.ProviderConfig provider = HttpResponseHelper.requireProvider(target, provider());
         if (requiresApiKey()) {
             HttpResponseHelper.requireApiKey(provider, provider());

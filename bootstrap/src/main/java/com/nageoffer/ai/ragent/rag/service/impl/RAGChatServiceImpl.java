@@ -27,6 +27,8 @@ import com.nageoffer.ai.ragent.rag.service.handler.StreamCallbackFactory;
 import com.nageoffer.ai.ragent.rag.service.handler.StreamTaskManager;
 import com.nageoffer.ai.ragent.rag.service.pipeline.StreamChatContext;
 import com.nageoffer.ai.ragent.rag.service.pipeline.StreamChatPipeline;
+import com.nageoffer.ai.ragent.rag.service.pipeline.ChatFlowOrchestrator;
+import com.nageoffer.ai.ragent.rag.service.pipeline.ChatFlowProperties;
 import com.nageoffer.ai.ragent.rag.trace.StreamChatTraceRunner;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -42,6 +44,8 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 public class RAGChatServiceImpl implements RAGChatService {
 
     private final StreamChatPipeline chatPipeline;
+    private final ChatFlowOrchestrator chatFlowOrchestrator;
+    private final ChatFlowProperties chatFlowProperties;
     private final ChatQueueLimiter chatQueueLimiter;
     private final StreamCallbackFactory callbackFactory;
     private final StreamChatTraceRunner traceRunner;
@@ -65,7 +69,11 @@ public class RAGChatServiceImpl implements RAGChatService {
                             .userId(UserContext.getUserId())
                             .callback(traceAware)
                             .build();
-                    chatPipeline.execute(ctx);
+                    if (chatFlowProperties.getRuntime() == ChatFlowProperties.RuntimeMode.NODES) {
+                        chatFlowOrchestrator.execute(ctx);
+                    } else {
+                        chatPipeline.execute(ctx);
+                    }
                 }));
     }
 

@@ -79,6 +79,7 @@ public class DefaultFileStorageService implements FileStorageService {
         // TIKA 只读流的前几 KB 来探测类型，不会加载整个文件
         String detectedContentType;
         try (InputStream is = file.getInputStream()) {
+            //TIKA.detect是用于检测MIME类型
             detectedContentType = TIKA.detect(is, originalFilename);
         }
 

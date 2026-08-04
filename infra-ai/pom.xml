@@ -21,5 +21,11 @@
             <groupId>com.squareup.okhttp3</groupId>
             <artifactId>okhttp</artifactId>
         </dependency>
+
+        <!-- 手工装配多个 OpenAI-Compatible ChatModel，避免单模型自动配置与现有路由冲突。 -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-openai</artifactId>
+        </dependency>
     </dependencies>
 </project>

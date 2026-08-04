@@ -23,6 +23,19 @@
             <version>${project.version}</version>
         </dependency>
 
+        <!-- 仅使用 Modular RAG 接口包装现有检索能力，不启用默认问答 Advisor。 -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-rag</artifactId>
+            <exclusions>
+                <!-- 项目继续显式使用 MCP SDK 1.1.2，避免 Spring AI 的传递版本参与仲裁。 -->
+                <exclusion>
+                    <groupId>io.modelcontextprotocol.sdk</groupId>
+                    <artifactId>mcp-json-jackson2</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
