@@ -67,8 +67,10 @@ class PgVectorRetrieverServiceTest {
                 argsCaptor.capture()
         );
 
-        assertTrue(sqlCaptor.getValue().contains("metadata->>'collection_name' IN (?, ?)"),
-                "合并后的 PG 存储契约仍通过 metadata.collection_name 区分知识库");
+        assertTrue(sqlCaptor.getValue().contains("collection_name IN (?, ?)"),
+                "PG 查询必须使用权威的 collection_name 物理列");
+        assertTrue(!sqlCaptor.getValue().contains("metadata->>'collection_name'"),
+                "PG 查询不应再依赖 metadata 中的冗余知识库名");
         Object[] args = argsCaptor.getValue();
         assertEquals("kb-finance", args[1]);
         assertEquals("kb-policy", args[2]);

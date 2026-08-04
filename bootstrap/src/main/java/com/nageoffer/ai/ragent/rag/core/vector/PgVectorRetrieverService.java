@@ -96,9 +96,9 @@ public class PgVectorRetrieverService implements VectorRetrieverService {
         args[collectionNames.size() + 1] = vectorLiteral;
         args[collectionNames.size() + 2] = limit;
 
-        // 本地 PG 写入、删除与关键词回灌均以 metadata.collection_name 为准，避免与物理列默认值产生数据分叉。
+        // collection_name 物理列是知识库归属的唯一权威字段，与写入、删除和关键词回灌保持一致。
         // noinspection SqlDialectInspection,SqlNoDataSourceInspection
-        return jdbcTemplate.query("SELECT id, content, 1 - (embedding <=> ?::vector) AS score FROM t_knowledge_vector WHERE metadata->>'collection_name' IN (" + placeholders + ") ORDER BY embedding <=> ?::vector LIMIT ?",
+        return jdbcTemplate.query("SELECT id, content, 1 - (embedding <=> ?::vector) AS score FROM t_knowledge_vector WHERE collection_name IN (" + placeholders + ") ORDER BY embedding <=> ?::vector LIMIT ?",
                 (rs, rowNum) -> RetrievedChunk.builder()
                         .id(rs.getString("id"))
                         .text(rs.getString("content"))

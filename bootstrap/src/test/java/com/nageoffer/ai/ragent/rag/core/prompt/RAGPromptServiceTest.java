@@ -66,7 +66,7 @@ class RAGPromptServiceTest {
         // 出处只允许数字角标：文档名与内部标签的禁令由基础模板统一声明，引用规则只声明自己是它的唯一例外
         assertTrue(result.contains("也不要在正文里主动标注信息的出处或文档名"));
         assertTrue(result.contains("标签属性、内部编号"));
-        assertTrue(result.contains("除角标外仍不得报文档名、不得罗列来源清单"));
+        assertTrue(result.contains("不报文档名、不出现输入侧的标签与属性字样、不罗列来源清单"));
     }
 
     @Test

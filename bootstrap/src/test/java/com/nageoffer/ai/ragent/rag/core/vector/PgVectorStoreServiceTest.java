@@ -18,7 +18,9 @@
 package com.nageoffer.ai.ragent.rag.core.vector;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.nageoffer.ai.ragent.core.chunk.VectorChunk;
+import com.nageoffer.ai.ragent.core.chunk.model.Chunk;
+import com.nageoffer.ai.ragent.core.chunk.model.ChunkMetadata;
+import com.nageoffer.ai.ragent.core.chunk.model.EmbeddedChunk;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.ParameterizedPreparedStatementSetter;
@@ -42,19 +44,16 @@ class PgVectorStoreServiceTest {
         JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
         PreparedStatement statement = mock(PreparedStatement.class);
         PgVectorStoreService service = new PgVectorStoreService(jdbcTemplate, new ObjectMapper());
-        VectorChunk chunk = VectorChunk.builder()
-                .chunkId("chunk-1")
-                .index(0)
-                .content("商品说明")
-                .embedding(new float[]{0.1F, 0.2F})
-                .build();
+        EmbeddedChunk chunk = new EmbeddedChunk(
+                new Chunk("chunk-1", 0, "商品说明", "商品说明", ChunkMetadata.empty()),
+                new float[]{0.1F, 0.2F});
 
         doAnswer(invocation -> {
             String sql = invocation.getArgument(0);
             if (!sql.contains("collection_name")) {
                 throw new AssertionError("INSERT 必须显式写入 collection_name");
             }
-            ParameterizedPreparedStatementSetter<VectorChunk> setter = invocation.getArgument(3);
+            ParameterizedPreparedStatementSetter<EmbeddedChunk> setter = invocation.getArgument(3);
             setter.setValues(statement, chunk);
             return new int[][]{{1}};
         }).when(jdbcTemplate).batchUpdate(anyString(), anyList(), anyInt(), any());
@@ -65,7 +64,7 @@ class PgVectorStoreServiceTest {
         verify(statement).setString(2, "kb-product");
         verify(statement).setString(3, "商品说明");
         verify(statement).setString(4,
-                "{\"collection_name\":\"kb-product\",\"doc_id\":\"doc-1\",\"chunk_index\":0}");
+                "{\"doc_id\":\"doc-1\",\"chunk_index\":0}");
         verify(statement).setString(5, "[0.1,0.2]");
     }
 }

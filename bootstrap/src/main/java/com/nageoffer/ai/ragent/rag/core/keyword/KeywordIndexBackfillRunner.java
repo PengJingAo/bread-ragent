@@ -21,7 +21,9 @@ import cn.hutool.core.collection.CollUtil;
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.nageoffer.ai.ragent.core.chunk.VectorChunk;
+import com.nageoffer.ai.ragent.core.chunk.model.Chunk;
+import com.nageoffer.ai.ragent.core.chunk.model.ChunkMetadata;
+import com.nageoffer.ai.ragent.core.chunk.model.EmbeddedChunk;
 import com.nageoffer.ai.ragent.rag.config.KeywordProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -106,15 +108,15 @@ public class KeywordIndexBackfillRunner implements ApplicationRunner {
 
     private long countBackfillableRows() {
         Long count = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM t_knowledge_vector WHERE jsonb_exists(metadata, 'collection_name')",
+                "SELECT COUNT(*) FROM t_knowledge_vector",
                 Long.class);
         return count == null ? 0L : count;
     }
 
     private List<BackfillRow> loadRows(int batchSize, long offset) {
         return jdbcTemplate.query(
-                "SELECT id, content, metadata::text AS metadata FROM t_knowledge_vector " +
-                        "WHERE jsonb_exists(metadata, 'collection_name') ORDER BY id LIMIT ? OFFSET ?",
+                "SELECT id, collection_name, content, metadata::text AS metadata, embedding::text AS embedding " +
+                        "FROM t_knowledge_vector ORDER BY id LIMIT ? OFFSET ?",
                 (rs, rowNum) -> toBackfillRow(rs),
                 batchSize,
                 offset);
@@ -123,22 +125,35 @@ public class KeywordIndexBackfillRunner implements ApplicationRunner {
     private BackfillRow toBackfillRow(ResultSet rs) throws SQLException {
         String metadataJson = rs.getString("metadata");
         Map<String, Object> metadata = parseMetadata(metadataJson);
-        String collectionName = stringValue(metadata.get("collection_name"));
+        String collectionName = rs.getString("collection_name");
         String docId = stringValue(metadata.get("doc_id"));
         Integer chunkIndex = intValue(metadata.get("chunk_index"));
+        String chunkId = rs.getString("id");
+        String content = rs.getString("content");
+        if (!StringUtils.hasText(content)) {
+            throw new IllegalArgumentException("PG 向量内容为空，chunkId=" + chunkId);
+        }
 
-        VectorChunk chunk = VectorChunk.builder()
-                .chunkId(rs.getString("id"))
-                .content(rs.getString("content"))
-                .index(chunkIndex)
-                .metadata(metadata)
-                .blockType(firstText(metadata, "block_type", "blockType"))
-                .outlinePath(stringListValue(firstValue(metadata, "outline_path", "outlinePath")))
-                .sectionContext(firstText(metadata, "section_context", "sectionContext"))
-                .sourceBlockIds(stringListValue(firstValue(metadata, "source_block_ids", "sourceBlockIds")))
-                .build();
+        // 文档级字段由索引写入端单独传递，剩余历史字段放入开放扩展位，避免迁移时丢失信息。
+        Map<String, Object> extras = new LinkedHashMap<>(metadata);
+        extras.remove("collection_name");
+        extras.remove("doc_id");
+        extras.remove("chunk_index");
+        extras.entrySet().removeIf(entry -> entry.getValue() == null);
+        List<String> outlinePath = stringListValue(firstValue(metadata, "outline_path", "outlinePath"));
+        String sectionContext = firstText(metadata, "section_context", "sectionContext");
+        String embeddingText = StringUtils.hasText(sectionContext)
+                ? sectionContext.strip() + System.lineSeparator() + content
+                : content;
+        Chunk chunk = new Chunk(
+                chunkId,
+                chunkIndex == null ? 0 : chunkIndex,
+                content,
+                embeddingText,
+                ChunkMetadata.builder().outlinePath(outlinePath).extras(extras).build());
 
-        return new BackfillRow(collectionName, docId, chunk);
+        return new BackfillRow(collectionName, docId,
+                new EmbeddedChunk(chunk, parseVector(rs.getString("embedding"), chunkId)));
     }
 
     private Map<String, Object> parseMetadata(String metadataJson) {
@@ -153,25 +168,55 @@ public class KeywordIndexBackfillRunner implements ApplicationRunner {
     }
 
     private long indexRows(List<BackfillRow> rows) {
-        Map<DocumentKey, List<VectorChunk>> chunksByDocument = new LinkedHashMap<>();
+        Map<DocumentKey, List<EmbeddedChunk>> chunksByDocument = new LinkedHashMap<>();
         for (BackfillRow row : rows) {
             if (!StringUtils.hasText(row.collectionName())) {
-                log.warn("跳过缺少 collection_name 的历史 chunk, chunkId={}", row.chunk().getChunkId());
+                log.warn("跳过缺少 collection_name 的历史 chunk, chunkId={}", row.chunk().chunkId());
                 continue;
             }
-            String docId = StringUtils.hasText(row.docId()) ? row.docId() : row.chunk().getChunkId();
+            String docId = StringUtils.hasText(row.docId()) ? row.docId() : row.chunk().chunkId();
             DocumentKey key = new DocumentKey(row.collectionName(), docId);
             chunksByDocument.computeIfAbsent(key, ignored -> new ArrayList<>()).add(row.chunk());
         }
 
         long indexed = 0;
-        for (Map.Entry<DocumentKey, List<VectorChunk>> entry : chunksByDocument.entrySet()) {
+        for (Map.Entry<DocumentKey, List<EmbeddedChunk>> entry : chunksByDocument.entrySet()) {
             DocumentKey key = entry.getKey();
-            List<VectorChunk> chunks = entry.getValue();
+            List<EmbeddedChunk> chunks = entry.getValue();
             keywordIndexService.indexDocumentChunks(key.collectionName(), key.docId(), chunks);
             indexed += chunks.size();
         }
         return indexed;
+    }
+
+    /**
+     * pgvector 的文本格式为 [v1,v2,...]，回灌时显式校验，避免把损坏数据写入派生索引。
+     */
+    private float[] parseVector(String vectorText, String chunkId) {
+        if (!StringUtils.hasText(vectorText)) {
+            throw new IllegalArgumentException("PG 向量为空，chunkId=" + chunkId);
+        }
+        String value = vectorText.strip();
+        if (value.length() < 3 || value.charAt(0) != '[' || value.charAt(value.length() - 1) != ']') {
+            throw new IllegalArgumentException("PG 向量格式非法，chunkId=" + chunkId);
+        }
+        String body = value.substring(1, value.length() - 1).strip();
+        if (body.isEmpty()) {
+            throw new IllegalArgumentException("PG 向量为空，chunkId=" + chunkId);
+        }
+        String[] values = body.split(",");
+        float[] vector = new float[values.length];
+        try {
+            for (int i = 0; i < values.length; i++) {
+                vector[i] = Float.parseFloat(values[i].strip());
+                if (!Float.isFinite(vector[i])) {
+                    throw new NumberFormatException("非有限数值");
+                }
+            }
+            return vector;
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("PG 向量格式非法，chunkId=" + chunkId, e);
+        }
     }
 
     private String firstText(Map<String, Object> metadata, String... keys) {
@@ -214,7 +259,7 @@ public class KeywordIndexBackfillRunner implements ApplicationRunner {
         return new ArrayList<>();
     }
 
-    private record BackfillRow(String collectionName, String docId, VectorChunk chunk) {
+    private record BackfillRow(String collectionName, String docId, EmbeddedChunk chunk) {
     }
 
     private record DocumentKey(String collectionName, String docId) {
